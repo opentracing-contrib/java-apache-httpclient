@@ -101,6 +101,12 @@ public class TracingClientExec implements ClientExecChain {
     } finally {
       if (response != null) {
         Integer redirectCount = clientContext.getAttribute(REDIRECT_COUNT, Integer.class);
+        /**
+         * This exec runs after {@link org.apache.http.impl.execchain.RedirectExec} which loops
+         * until there is no redirect or reaches max redirect count.
+         * {@link RedirectStrategy} is used to decide whether span should be finished or not.
+         * If there is a redirect span is not finished and redirect is logged.
+         */
         if (!redirectHandlingDisabled &&
             clientContext.getRequestConfig().isRedirectsEnabled() &&
             redirectStrategy.isRedirected(request, response, clientContext) &&
