@@ -38,7 +38,7 @@ import io.opentracing.tag.Tags;
  */
 public class TracingHttpClientBuilderTest extends LocalServerTestBase {
 
-    private MockTracer mockTracer = new MockTracer(MockTracer.Propagator.TEXT_MAP);
+    private static MockTracer mockTracer = new MockTracer(MockTracer.Propagator.TEXT_MAP);
 
     private HttpHost serverHost;
 
@@ -49,7 +49,7 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
                 Collections.<ApacheClientSpanDecorator>singletonList(new ApacheClientSpanDecorator.StandardTags()));
 
         this.serverBootstrap.registerHandler(RedirectHandler.MAPPING, new RedirectHandler())
-                .registerHandler(PropagationTestHandler.MAPPING, new PropagationTestHandler());
+                .registerHandler(PropagationHandler.MAPPING, new PropagationHandler());
         this.serverHost = super.start();
     }
 
@@ -116,7 +116,7 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
         Assert.assertEquals("redirect", mockSpan.logEntries().get(0).fields().get("event"));
         Assert.assertEquals(serverHost.getPort(), mockSpan.logEntries().get(0).fields().get(Tags.PEER_PORT.getKey()));
         Assert.assertEquals(serverHost.getHostName(), mockSpan.logEntries().get(0).fields().get(Tags.PEER_HOSTNAME.getKey()));
-        Assert.assertEquals("/echo/a", mockSpan.logEntries().get(0).fields().get("Location"));
+        Assert.assertEquals("/propagation", mockSpan.logEntries().get(0).fields().get("Location"));
     }
 
     @Test
@@ -200,23 +200,19 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
     }
 
     @Test
-    public void testPropagation() throws IOException {
+    public void testPropagationAfterRedirect() throws IOException {
         {
-            HttpClient client = clientBuilder
-                    .setDefaultRequestConfig(RequestConfig.custom()
-                            .setRedirectsEnabled(false)
-                            .build())
-                    .build();
-            client.execute(new HttpGet(serverUrl(PropagationTestHandler.MAPPING)));
+            HttpClient client = clientBuilder.build();
+            client.execute(new HttpGet(serverUrl(RedirectHandler.MAPPING)));
         }
 
         List<MockSpan> mockSpans = mockTracer.finishedSpans();
         Assert.assertEquals(1, mockSpans.size());
 
         MockSpan mockSpan = mockSpans.get(0);
-        Assert.assertEquals(PropagationTestHandler.lastRequest.getFirstHeader("traceId").getValue(),
+        Assert.assertEquals(PropagationHandler.lastRequest.getFirstHeader("traceId").getValue(),
                 String.valueOf(mockSpan.context().traceId()));
-        Assert.assertEquals(PropagationTestHandler.lastRequest.getFirstHeader("spanId").getValue(),
+        Assert.assertEquals(PropagationHandler.lastRequest.getFirstHeader("spanId").getValue(),
                 String.valueOf(mockSpan.context().spanId()));
     }
 
@@ -249,18 +245,17 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
     public static class RedirectHandler implements HttpRequestHandler {
 
         public static final String MAPPING = "/redirect";
-        public static final String REDIRECT_LOCATION = "/echo/a";
 
         @Override
         public void handle(HttpRequest request, HttpResponse response, HttpContext context)
                 throws HttpException, IOException {
 
             response.setStatusCode(HttpStatus.SC_MOVED_PERMANENTLY);
-            response.addHeader("Location", REDIRECT_LOCATION);
+            response.addHeader("Location", PropagationHandler.MAPPING);
         }
     }
 
-    public static class PropagationTestHandler implements HttpRequestHandler {
+    public static class PropagationHandler implements HttpRequestHandler {
         public static final String MAPPING = "/propagation";
         public static HttpRequest lastRequest;
 
