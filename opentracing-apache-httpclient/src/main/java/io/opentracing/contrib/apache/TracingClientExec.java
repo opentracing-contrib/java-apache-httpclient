@@ -1,6 +1,6 @@
 package io.opentracing.contrib.apache;
 
-import static io.opentracing.contrib.apache.TracingHttpClientBuilder.PARENT_CONTEXT;
+import static io.opentracing.contrib.apache.Constants.PARENT_CONTEXT;
 
 import io.opentracing.Span;
 import io.opentracing.SpanContext;

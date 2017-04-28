@@ -15,10 +15,6 @@ import org.apache.http.impl.execchain.ClientExecChain;
  * @author Pavol Loffay
  */
 public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpClientBuilder {
-    /**
-     * SpanContext which will be used as a parent for created client span.
-     */
-    public static final String PARENT_CONTEXT = TracingHttpClientBuilder.class.getName() + ".parentSpanContext";
 
     private final RedirectStrategy redirectStrategy;
     private final boolean redirectHandlingDisabled;

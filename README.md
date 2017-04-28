@@ -32,7 +32,7 @@ client.execute(new HttpGet("url"));
 ### Manually 
 ```java
 BasicHttpContext basicHttpContext = new BasicHttpContext();
-basicHttpContext.setAttribute(TracingHttpClientBulder.PARENT_CONTEXT, parentSpan.context());
+basicHttpContext.setAttribute(Constants.PARENT_CONTEXT, parentSpan.context());
 client.execute(new HttpGet("url"), basicHttpContext);
 ```
 
