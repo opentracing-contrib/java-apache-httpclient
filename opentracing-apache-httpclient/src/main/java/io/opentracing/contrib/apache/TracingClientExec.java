@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.http.HttpException;
+import org.apache.http.HttpRequest;
 import org.apache.http.client.RedirectStrategy;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpExecutionAware;
@@ -30,9 +31,11 @@ import org.apache.http.impl.execchain.ClientExecChain;
  * @author Pavol Loffay
  */
 public class TracingClientExec implements ClientExecChain {
+  static final String COMPONENT_NAME = "apache-httpclient";
+
   /**
    * Id of {@link HttpClientContext#setAttribute(String, Object)} representing span associated with
-   * the current request.
+   * the current client processing. Referenced span is local span not a span representing HTTP communication.
    */
   protected static final String ACTIVE_SPAN = TracingHttpClientBuilder.class.getName() + ".activeSpan";
   /**
@@ -60,52 +63,27 @@ public class TracingClientExec implements ClientExecChain {
 
   @Override
   public CloseableHttpResponse execute(HttpRoute route,
-                                       HttpRequestWrapper request,
-                                       HttpClientContext clientContext,
-                                       HttpExecutionAware execAware)
-      throws IOException, HttpException {
+      HttpRequestWrapper request,
+      HttpClientContext clientContext,
+      HttpExecutionAware execAware) throws IOException, HttpException {
 
-    Span span = clientContext.getAttribute(ACTIVE_SPAN, Span.class);
+    Span localSpan = clientContext.getAttribute(ACTIVE_SPAN, Span.class);
     CloseableHttpResponse response = null;
     try {
-      // do not create spans for redirect
-      if (span != null) {
-        // original headers are not passed to redirect
-        tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
-        return (response = requestExecutor.execute(route, request, clientContext, execAware));
+      if (localSpan != null) {
+        return (response = handleNetworkProcessing(localSpan, route, request, clientContext, execAware));
       }
 
-      Tracer.SpanBuilder spanBuilder = tracer.buildSpan(request.getRequestLine().getMethod())
-          .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT);
-
-      if (clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class) != null) {
-        spanBuilder.asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
-      } else if (spanManager.current().getSpan() != null) {
-        spanBuilder.asChildOf(spanManager.current().getSpan());
-      }
-
-      span = spanBuilder.start();
-      tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
-      clientContext.setAttribute(ACTIVE_SPAN, span);
-      clientContext.setAttribute(REDIRECT_COUNT, 0);
-
-      for (ApacheClientSpanDecorator decorator: spanDecorators) {
-        decorator.onRequest(request, clientContext, span);
-      }
-      return (response = requestExecutor.execute(route, request, clientContext, execAware));
-    } catch (IOException | HttpException | RuntimeException e) {
-      for (ApacheClientSpanDecorator decorator: spanDecorators) {
-        decorator.onError(request, clientContext, e, span);
-      }
-      throw e;
+      localSpan = handleLocalSpan(request, clientContext);
+      return (response = handleNetworkProcessing(localSpan, route, request, clientContext, execAware));
     } finally {
       if (response != null) {
         Integer redirectCount = clientContext.getAttribute(REDIRECT_COUNT, Integer.class);
         /**
          * This exec runs after {@link org.apache.http.impl.execchain.RedirectExec} which loops
          * until there is no redirect or reaches max redirect count.
-         * {@link RedirectStrategy} is used to decide whether span should be finished or not.
-         * If there is a redirect span is not finished and redirect is logged.
+         * {@link RedirectStrategy} is used to decide whether localSpan should be finished or not.
+         * If there is a redirect localSpan is not finished and redirect is logged.
          */
         if (!redirectHandlingDisabled &&
             clientContext.getRequestConfig().isRedirectsEnabled() &&
@@ -113,18 +91,59 @@ public class TracingClientExec implements ClientExecChain {
             ++redirectCount < clientContext.getRequestConfig().getMaxRedirects()) {
 
           clientContext.setAttribute(REDIRECT_COUNT, redirectCount);
-          for (ApacheClientSpanDecorator decorator : spanDecorators) {
-            decorator.onRedirect(response, clientContext, span);
-          }
         } else {
-          for (ApacheClientSpanDecorator decorator : spanDecorators) {
-            decorator.onResponse(response, clientContext, span);
-          }
-          span.finish();
+          localSpan.finish();
         }
       } else {
-        span.finish();
+        localSpan.finish();
       }
     }
+  }
+
+  protected CloseableHttpResponse handleNetworkProcessing(Span parentSpan, HttpRoute route,
+      HttpRequestWrapper request,
+      HttpClientContext clientContext,
+      HttpExecutionAware execAware) throws IOException, HttpException {
+
+    Span redirectSpan = tracer.buildSpan(request.getMethod())
+        .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
+        .asChildOf(parentSpan)
+        .start();
+    tracer.inject(redirectSpan.context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
+
+    CloseableHttpResponse response = null;
+    try {
+      for (ApacheClientSpanDecorator decorator : spanDecorators) {
+        decorator.onRequest(request, clientContext, redirectSpan);
+      }
+      response = requestExecutor.execute(route, request, clientContext, execAware);
+      for (ApacheClientSpanDecorator decorator : spanDecorators) {
+        decorator.onResponse(response, clientContext, redirectSpan);
+      }
+      return response;
+    } catch (IOException | HttpException | RuntimeException e) {
+      for (ApacheClientSpanDecorator decorator: spanDecorators) {
+        decorator.onError(request, clientContext, e, redirectSpan);
+      }
+      throw e;
+    } finally {
+      redirectSpan.finish();
+    }
+  }
+
+  protected Span handleLocalSpan(HttpRequest httpRequest, HttpClientContext clientContext) {
+    Tracer.SpanBuilder spanBuilder = tracer.buildSpan(httpRequest.getRequestLine().getMethod())
+        .withTag(Tags.COMPONENT.getKey(), COMPONENT_NAME);
+
+    if (clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class) != null) {
+      spanBuilder.asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
+    } else if (spanManager.current().getSpan() != null) {
+      spanBuilder.asChildOf(spanManager.current().getSpan());
+    }
+
+    Span localSpan = spanBuilder.start();
+    clientContext.setAttribute(ACTIVE_SPAN, localSpan);
+    clientContext.setAttribute(REDIRECT_COUNT, 0);
+    return localSpan;
   }
 }
