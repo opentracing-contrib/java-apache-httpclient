@@ -9,7 +9,6 @@ import io.opentracing.contrib.spanmanager.DefaultSpanManager;
 import io.opentracing.contrib.spanmanager.SpanManager;
 import io.opentracing.propagation.Format;
 import io.opentracing.tag.Tags;
-import io.opentracing.util.GlobalTracer;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,20 +48,25 @@ public class TracingClientExec implements ClientExecChain {
   private final ClientExecChain requestExecutor;
   private final boolean redirectHandlingDisabled;
 
-  private final Tracer tracer = GlobalTracer.get();
+  private final Tracer tracer;
   private final SpanManager spanManager = DefaultSpanManager.getInstance();
   private final List<ApacheClientSpanDecorator> spanDecorators;
 
-  public TracingClientExec(ClientExecChain clientExecChain, RedirectStrategy redirectStrategy,
-      boolean redirectHandlingDisabled, List<ApacheClientSpanDecorator> spanDecorators) {
+  public TracingClientExec(ClientExecChain clientExecChain,
+      RedirectStrategy redirectStrategy,
+      boolean redirectHandlingDisabled,
+      Tracer tracer,
+      List<ApacheClientSpanDecorator> spanDecorators) {
     this.requestExecutor = clientExecChain;
     this.redirectStrategy = redirectStrategy;
     this.redirectHandlingDisabled = redirectHandlingDisabled;
+    this.tracer = tracer;
     this.spanDecorators = new ArrayList<>(spanDecorators);
   }
 
   @Override
-  public CloseableHttpResponse execute(HttpRoute route,
+  public CloseableHttpResponse execute(
+      HttpRoute route,
       HttpRequestWrapper request,
       HttpClientContext clientContext,
       HttpExecutionAware execAware) throws IOException, HttpException {
@@ -70,11 +74,10 @@ public class TracingClientExec implements ClientExecChain {
     Span localSpan = clientContext.getAttribute(ACTIVE_SPAN, Span.class);
     CloseableHttpResponse response = null;
     try {
-      if (localSpan != null) {
-        return (response = handleNetworkProcessing(localSpan, route, request, clientContext, execAware));
+      if (localSpan == null) {
+        localSpan = handleLocalSpan(request, clientContext);
       }
 
-      localSpan = handleLocalSpan(request, clientContext);
       return (response = handleNetworkProcessing(localSpan, route, request, clientContext, execAware));
     } catch (Exception e) {
       localSpan.finish();
@@ -117,7 +120,9 @@ public class TracingClientExec implements ClientExecChain {
     return localSpan;
   }
 
-  protected CloseableHttpResponse handleNetworkProcessing(Span parentSpan, HttpRoute route,
+  protected CloseableHttpResponse handleNetworkProcessing(
+      Span parentSpan,
+      HttpRoute route,
       HttpRequestWrapper request,
       HttpClientContext clientContext,
       HttpExecutionAware execAware) throws IOException, HttpException {
@@ -128,12 +133,11 @@ public class TracingClientExec implements ClientExecChain {
         .start();
     tracer.inject(redirectSpan.context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
 
-    CloseableHttpResponse response = null;
     try {
       for (ApacheClientSpanDecorator decorator : spanDecorators) {
         decorator.onRequest(request, clientContext, redirectSpan);
       }
-      response = requestExecutor.execute(route, request, clientContext, execAware);
+      CloseableHttpResponse response = requestExecutor.execute(route, request, clientContext, execAware);
       for (ApacheClientSpanDecorator decorator : spanDecorators) {
         decorator.onResponse(response, clientContext, redirectSpan);
       }

@@ -77,8 +77,7 @@ public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpCl
 
     @Override
     protected ClientExecChain decorateProtocolExec(final ClientExecChain requestExecutor) {
-        GlobalTracer.register(tracer);
         return new TracingClientExec(requestExecutor, redirectStrategy,
-                redirectHandlingDisabled, spanDecorators);
+                redirectHandlingDisabled, tracer, spanDecorators);
     }
 }
