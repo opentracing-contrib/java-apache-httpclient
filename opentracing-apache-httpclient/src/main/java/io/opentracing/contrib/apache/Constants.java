@@ -3,7 +3,10 @@ package io.opentracing.contrib.apache;
 /**
  * @author Pavol Loffay
  */
-public class Constants {
+public final class Constants {
+
+  private Constants() {}
+
   /**
    * SpanContext which will be used as a parent for created client span.
    */
