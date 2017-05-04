@@ -1,13 +1,17 @@
 package io.opentracing.contrib.apache;
 
 
+import io.opentracing.Span;
+import io.opentracing.contrib.spanmanager.DefaultSpanManager;
+import io.opentracing.mock.MockSpan;
+import io.opentracing.mock.MockTracer;
+import io.opentracing.tag.Tags;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -19,19 +23,12 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultRedirectStrategy;
 import org.apache.http.localserver.LocalServerTestBase;
-import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpRequestHandler;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-
-import io.opentracing.Span;
-import io.opentracing.contrib.spanmanager.DefaultSpanManager;
-import io.opentracing.mock.MockSpan;
-import io.opentracing.mock.MockTracer;
-import io.opentracing.tag.Tags;
 
 /**
  * @author Pavol Loffay
@@ -77,9 +74,8 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
         MockSpan mockSpan = mockSpans.get(0);
         Assert.assertEquals("GET", mockSpan.operationName());
 
-        Assert.assertEquals(7, mockSpan.tags().size());
+        Assert.assertEquals(6, mockSpan.tags().size());
         Assert.assertEquals(Tags.SPAN_KIND_CLIENT, mockSpan.tags().get(Tags.SPAN_KIND.getKey()));
-        Assert.assertNotNull(mockSpan.tags().get(Tags.COMPONENT.getKey()));
         Assert.assertEquals("GET", mockSpan.tags().get(Tags.HTTP_METHOD.getKey()));
         Assert.assertEquals(serverUrl("/echo/a"), mockSpan.tags().get(Tags.HTTP_URL.getKey()));
         Assert.assertEquals(200, mockSpan.tags().get(Tags.HTTP_STATUS.getKey()));
@@ -102,9 +98,8 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
 
         MockSpan mockSpan = mockSpans.get(0);
         Assert.assertEquals("GET", mockSpan.operationName());
-        Assert.assertEquals(7, mockSpan.tags().size());
+        Assert.assertEquals(6, mockSpan.tags().size());
         Assert.assertEquals(Tags.SPAN_KIND_CLIENT, mockSpan.tags().get(Tags.SPAN_KIND.getKey()));
-        Assert.assertNotNull(mockSpan.tags().get(Tags.COMPONENT.getKey()));
         Assert.assertEquals("GET", mockSpan.tags().get(Tags.HTTP_METHOD.getKey()));
         Assert.assertEquals(serverUrl("/redirect"), mockSpan.tags().get(Tags.HTTP_URL.getKey()));
         Assert.assertEquals(301, mockSpan.tags().get(Tags.HTTP_STATUS.getKey()));
@@ -113,9 +108,8 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
 
         mockSpan = mockSpans.get(1);
         Assert.assertEquals("GET", mockSpan.operationName());
-        Assert.assertEquals(7, mockSpan.tags().size());
+        Assert.assertEquals(6, mockSpan.tags().size());
         Assert.assertEquals(Tags.SPAN_KIND_CLIENT, mockSpan.tags().get(Tags.SPAN_KIND.getKey()));
-        Assert.assertNotNull(mockSpan.tags().get(Tags.COMPONENT.getKey()));
         Assert.assertEquals("GET", mockSpan.tags().get(Tags.HTTP_METHOD.getKey()));
         Assert.assertEquals(serverUrl("/propagation"), mockSpan.tags().get(Tags.HTTP_URL.getKey()));
         Assert.assertEquals(200, mockSpan.tags().get(Tags.HTTP_STATUS.getKey()));
@@ -141,9 +135,8 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
         MockSpan mockSpan = mockSpans.get(0);
         Assert.assertEquals("GET", mockSpan.operationName());
 
-        Assert.assertEquals(7, mockSpan.tags().size());
+        Assert.assertEquals(6, mockSpan.tags().size());
         Assert.assertEquals(Tags.SPAN_KIND_CLIENT, mockSpan.tags().get(Tags.SPAN_KIND.getKey()));
-        Assert.assertNotNull(mockSpan.tags().get(Tags.COMPONENT.getKey()));
         Assert.assertEquals("GET", mockSpan.tags().get(Tags.HTTP_METHOD.getKey()));
         Assert.assertEquals(serverUrl("/redirect"), mockSpan.tags().get(Tags.HTTP_URL.getKey()));
         Assert.assertEquals(301, mockSpan.tags().get(Tags.HTTP_STATUS.getKey()));
@@ -171,9 +164,8 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
         MockSpan mockSpan = mockSpans.get(0);
         Assert.assertEquals("GET", mockSpan.operationName());
 
-        Assert.assertEquals(7, mockSpan.tags().size());
+        Assert.assertEquals(6, mockSpan.tags().size());
         Assert.assertEquals(Tags.SPAN_KIND_CLIENT, mockSpan.tags().get(Tags.SPAN_KIND.getKey()));
-        Assert.assertNotNull(mockSpan.tags().get(Tags.COMPONENT.getKey()));
         Assert.assertEquals("GET", mockSpan.tags().get(Tags.HTTP_METHOD.getKey()));
         Assert.assertEquals(serverUrl("/redirect"), mockSpan.tags().get(Tags.HTTP_URL.getKey()));
         Assert.assertEquals(301, mockSpan.tags().get(Tags.HTTP_STATUS.getKey()));
@@ -189,13 +181,10 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
         {
             Span parentSpan = mockTracer.buildSpan("parent")
                     .start();
-
             DefaultSpanManager.getInstance().activate(parentSpan);
 
             CloseableHttpClient client = clientBuilder.build();
-            BasicHttpContext basicHttpContext = new BasicHttpContext();
-
-            client.execute(new HttpGet(serverUrl("/echo/a")), basicHttpContext);
+            client.execute(new HttpGet(serverUrl("/echo/a")));
 
             parentSpan.finish();
         }

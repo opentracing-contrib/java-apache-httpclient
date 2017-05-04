@@ -76,15 +76,18 @@ public class TracingClientExec implements ClientExecChain {
 
       localSpan = handleLocalSpan(request, clientContext);
       return (response = handleNetworkProcessing(localSpan, route, request, clientContext, execAware));
+    } catch (Exception e) {
+      localSpan.finish();
+      throw e;
     } finally {
       if (response != null) {
-        Integer redirectCount = clientContext.getAttribute(REDIRECT_COUNT, Integer.class);
         /**
          * This exec runs after {@link org.apache.http.impl.execchain.RedirectExec} which loops
          * until there is no redirect or reaches max redirect count.
          * {@link RedirectStrategy} is used to decide whether localSpan should be finished or not.
          * If there is a redirect localSpan is not finished and redirect is logged.
          */
+        Integer redirectCount = clientContext.getAttribute(REDIRECT_COUNT, Integer.class);
         if (!redirectHandlingDisabled &&
             clientContext.getRequestConfig().isRedirectsEnabled() &&
             redirectStrategy.isRedirected(request, response, clientContext) &&
@@ -94,10 +97,24 @@ public class TracingClientExec implements ClientExecChain {
         } else {
           localSpan.finish();
         }
-      } else {
-        localSpan.finish();
       }
     }
+  }
+
+  protected Span handleLocalSpan(HttpRequest httpRequest, HttpClientContext clientContext) {
+    Tracer.SpanBuilder spanBuilder = tracer.buildSpan(httpRequest.getRequestLine().getMethod())
+        .withTag(Tags.COMPONENT.getKey(), COMPONENT_NAME);
+
+    if (clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class) != null) {
+      spanBuilder.asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
+    } else if (spanManager.current().getSpan() != null) {
+      spanBuilder.asChildOf(spanManager.current().getSpan());
+    }
+
+    Span localSpan = spanBuilder.start();
+    clientContext.setAttribute(ACTIVE_SPAN, localSpan);
+    clientContext.setAttribute(REDIRECT_COUNT, 0);
+    return localSpan;
   }
 
   protected CloseableHttpResponse handleNetworkProcessing(Span parentSpan, HttpRoute route,
@@ -131,19 +148,4 @@ public class TracingClientExec implements ClientExecChain {
     }
   }
 
-  protected Span handleLocalSpan(HttpRequest httpRequest, HttpClientContext clientContext) {
-    Tracer.SpanBuilder spanBuilder = tracer.buildSpan(httpRequest.getRequestLine().getMethod())
-        .withTag(Tags.COMPONENT.getKey(), COMPONENT_NAME);
-
-    if (clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class) != null) {
-      spanBuilder.asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
-    } else if (spanManager.current().getSpan() != null) {
-      spanBuilder.asChildOf(spanManager.current().getSpan());
-    }
-
-    Span localSpan = spanBuilder.start();
-    clientContext.setAttribute(ACTIVE_SPAN, localSpan);
-    clientContext.setAttribute(REDIRECT_COUNT, 0);
-    return localSpan;
-  }
 }

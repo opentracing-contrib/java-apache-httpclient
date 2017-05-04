@@ -54,7 +54,6 @@ public interface ApacheClientSpanDecorator {
 
         @Override
         public void onRequest(HttpRequestWrapper request, HttpContext httpContext, Span span) {
-            Tags.COMPONENT.set(span, "apache-httpclient");
             Tags.HTTP_METHOD.set(span, request.getRequestLine().getMethod());
 
             URI uri = request.getURI();
