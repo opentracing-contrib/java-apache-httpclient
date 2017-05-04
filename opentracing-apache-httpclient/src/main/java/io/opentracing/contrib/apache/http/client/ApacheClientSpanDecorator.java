@@ -1,4 +1,4 @@
-package io.opentracing.contrib.apache;
+package io.opentracing.contrib.apache.http.client;
 
 import io.opentracing.Span;
 import io.opentracing.tag.Tags;

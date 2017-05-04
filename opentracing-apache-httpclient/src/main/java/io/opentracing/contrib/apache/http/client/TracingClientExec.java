@@ -1,6 +1,6 @@
-package io.opentracing.contrib.apache;
+package io.opentracing.contrib.apache.http.client;
 
-import static io.opentracing.contrib.apache.Constants.PARENT_CONTEXT;
+import static io.opentracing.contrib.apache.http.client.Constants.PARENT_CONTEXT;
 
 import io.opentracing.Span;
 import io.opentracing.SpanContext;
@@ -52,7 +52,8 @@ public class TracingClientExec implements ClientExecChain {
   private final SpanManager spanManager = DefaultSpanManager.getInstance();
   private final List<ApacheClientSpanDecorator> spanDecorators;
 
-  public TracingClientExec(ClientExecChain clientExecChain,
+  public TracingClientExec(
+      ClientExecChain clientExecChain,
       RedirectStrategy redirectStrategy,
       boolean redirectHandlingDisabled,
       Tracer tracer,

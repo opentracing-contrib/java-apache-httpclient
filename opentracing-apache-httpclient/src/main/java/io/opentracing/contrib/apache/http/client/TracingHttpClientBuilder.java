@@ -1,7 +1,7 @@
-package io.opentracing.contrib.apache;
+package io.opentracing.contrib.apache.http.client;
 
 import io.opentracing.Tracer;
-import io.opentracing.contrib.apache.ApacheClientSpanDecorator.StandardTags;
+import io.opentracing.contrib.apache.http.client.ApacheClientSpanDecorator.StandardTags;
 import io.opentracing.util.GlobalTracer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,8 +19,8 @@ public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpCl
     private final RedirectStrategy redirectStrategy;
     private final boolean redirectHandlingDisabled;
 
-    private final Tracer tracer;
-    private final List<ApacheClientSpanDecorator> spanDecorators;
+    private Tracer tracer;
+    private List<ApacheClientSpanDecorator> spanDecorators;
 
     /**
      * When using this constructor tracer should be registered via
@@ -28,10 +28,9 @@ public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpCl
      */
     public TracingHttpClientBuilder() {
         this(DefaultRedirectStrategy.INSTANCE,
-                false,
-                GlobalTracer.get(),
-                Collections.<ApacheClientSpanDecorator>singletonList(
-                    new ApacheClientSpanDecorator.StandardTags()));
+            false,
+            GlobalTracer.get(),
+            Collections.<ApacheClientSpanDecorator>singletonList(new ApacheClientSpanDecorator.StandardTags()));
     }
 
     /**
@@ -40,7 +39,8 @@ public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpCl
      * @param redirectHandlingDisabled disable redirect strategy, do not call
      * {@link org.apache.http.impl.client.HttpClientBuilder#setRedirectStrategy(RedirectStrategy)}
      */
-    public TracingHttpClientBuilder(RedirectStrategy redirectStrategy,
+    public TracingHttpClientBuilder(
+        RedirectStrategy redirectStrategy,
         boolean redirectHandlingDisabled) {
         this(redirectStrategy,
             redirectHandlingDisabled,
@@ -56,10 +56,11 @@ public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpCl
          * @param tracer tracer instance
          * @param spanDecorators decorators
          */
-    public TracingHttpClientBuilder(RedirectStrategy redirectStrategy,
-                                    boolean redirectHandlingDisabled,
-                                    Tracer tracer,
-                                    List<ApacheClientSpanDecorator> spanDecorators) {
+    public TracingHttpClientBuilder(
+        RedirectStrategy redirectStrategy,
+        boolean redirectHandlingDisabled,
+        Tracer tracer,
+        List<ApacheClientSpanDecorator> spanDecorators) {
         this.redirectStrategy = redirectStrategy;
         this.redirectHandlingDisabled = redirectHandlingDisabled;
         this.tracer = tracer;
@@ -73,6 +74,16 @@ public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpCl
 
     public static TracingHttpClientBuilder create() {
         return new TracingHttpClientBuilder();
+    }
+
+    public TracingHttpClientBuilder withTracer(Tracer tracer) {
+        this.tracer = tracer;
+        return this;
+    }
+
+    public TracingHttpClientBuilder withSpanDecorators(List<ApacheClientSpanDecorator> decorators) {
+        this.spanDecorators = new ArrayList<>(decorators);
+        return this;
     }
 
     @Override

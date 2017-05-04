@@ -1,4 +1,4 @@
-package io.opentracing.contrib.apache;
+package io.opentracing.contrib.apache.http.client;
 
 /**
  * @author Pavol Loffay
