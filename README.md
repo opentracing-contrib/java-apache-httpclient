@@ -25,7 +25,7 @@ If parent span context is not passed created client spans will be in a new trace
 
 ### SpanManager
 ```java
-spanManager.activate(parentSpan);
+spanManager.activate(parentSpan); // called in the same thread as client.execute()
 client.execute(new HttpGet("url"));
 ```
 

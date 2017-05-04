@@ -14,7 +14,7 @@ import org.apache.http.impl.execchain.ClientExecChain;
 /**
  * @author Pavol Loffay
  */
-public class TracingHttpClientBuilder extends org.apache.http.impl.client.HttpClientBuilder {
+public class TracingHttpClientBuilder extends HttpClientBuilder {
 
     private final RedirectStrategy redirectStrategy;
     private final boolean redirectHandlingDisabled;

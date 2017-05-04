@@ -10,7 +10,7 @@ import io.opentracing.propagation.TextMap;
 /**
  * @author Pavol Loffay
  */
-class HttpHeadersInjectAdapter implements TextMap {
+public class HttpHeadersInjectAdapter implements TextMap {
 
     private HttpRequest httpRequest;
 
