@@ -2,16 +2,10 @@ package io.opentracing.contrib.apache.http.client;
 
 import static io.opentracing.contrib.apache.http.client.Constants.PARENT_CONTEXT;
 
-import io.opentracing.Span;
-import io.opentracing.SpanContext;
-import io.opentracing.Tracer;
-import io.opentracing.contrib.spanmanager.DefaultSpanManager;
-import io.opentracing.contrib.spanmanager.SpanManager;
-import io.opentracing.propagation.Format;
-import io.opentracing.tag.Tags;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+
 import org.apache.http.HttpException;
 import org.apache.http.HttpRequest;
 import org.apache.http.client.RedirectStrategy;
@@ -21,6 +15,12 @@ import org.apache.http.client.methods.HttpRequestWrapper;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.impl.execchain.ClientExecChain;
+
+import io.opentracing.ActiveSpan;
+import io.opentracing.SpanContext;
+import io.opentracing.Tracer;
+import io.opentracing.propagation.Format;
+import io.opentracing.tag.Tags;
 
 /**
  * Tracing is added before {@link org.apache.http.impl.execchain.ProtocolExec} which is invoked as
@@ -49,7 +49,6 @@ public class TracingClientExec implements ClientExecChain {
   private final boolean redirectHandlingDisabled;
 
   private final Tracer tracer;
-  private final SpanManager spanManager = DefaultSpanManager.getInstance();
   private final List<ApacheClientSpanDecorator> spanDecorators;
 
   public TracingClientExec(
@@ -72,7 +71,7 @@ public class TracingClientExec implements ClientExecChain {
       HttpClientContext clientContext,
       HttpExecutionAware execAware) throws IOException, HttpException {
 
-    Span localSpan = clientContext.getAttribute(ACTIVE_SPAN, Span.class);
+    ActiveSpan localSpan = clientContext.getAttribute(ACTIVE_SPAN, ActiveSpan.class);
     CloseableHttpResponse response = null;
     try {
       if (localSpan == null) {
@@ -81,7 +80,7 @@ public class TracingClientExec implements ClientExecChain {
 
       return (response = handleNetworkProcessing(localSpan, route, request, clientContext, execAware));
     } catch (Exception e) {
-      localSpan.finish();
+      localSpan.deactivate();
       throw e;
     } finally {
       if (response != null) {
@@ -99,39 +98,38 @@ public class TracingClientExec implements ClientExecChain {
 
           clientContext.setAttribute(REDIRECT_COUNT, redirectCount);
         } else {
-          localSpan.finish();
+          localSpan.deactivate();
         }
       }
     }
   }
 
-  protected Span handleLocalSpan(HttpRequest httpRequest, HttpClientContext clientContext) {
+  protected ActiveSpan handleLocalSpan(HttpRequest httpRequest, HttpClientContext clientContext) {
     Tracer.SpanBuilder spanBuilder = tracer.buildSpan(httpRequest.getRequestLine().getMethod())
         .withTag(Tags.COMPONENT.getKey(), COMPONENT_NAME);
 
     if (clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class) != null) {
-      spanBuilder.asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
-    } else if (spanManager.current().getSpan() != null) {
-      spanBuilder.asChildOf(spanManager.current().getSpan());
+      spanBuilder.ignoreActiveSpan()
+              .asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
     }
 
-    Span localSpan = spanBuilder.start();
+    ActiveSpan localSpan = spanBuilder.startActive();
     clientContext.setAttribute(ACTIVE_SPAN, localSpan);
     clientContext.setAttribute(REDIRECT_COUNT, 0);
     return localSpan;
   }
 
   protected CloseableHttpResponse handleNetworkProcessing(
-      Span parentSpan,
+      ActiveSpan parentSpan,
       HttpRoute route,
       HttpRequestWrapper request,
       HttpClientContext clientContext,
       HttpExecutionAware execAware) throws IOException, HttpException {
 
-    Span redirectSpan = tracer.buildSpan(request.getMethod())
+    ActiveSpan redirectSpan = tracer.buildSpan(request.getMethod())
         .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
         .asChildOf(parentSpan)
-        .start();
+        .startActive();
     tracer.inject(redirectSpan.context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
 
     try {
@@ -149,7 +147,7 @@ public class TracingClientExec implements ClientExecChain {
       }
       throw e;
     } finally {
-      redirectSpan.finish();
+      redirectSpan.deactivate();
     }
   }
 

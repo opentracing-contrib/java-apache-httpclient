@@ -1,15 +1,17 @@
 package io.opentracing.contrib.apache.http.client;
 
-import io.opentracing.Span;
-import io.opentracing.tag.Tags;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
+
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpRequestWrapper;
 import org.apache.http.protocol.HttpContext;
+
+import io.opentracing.BaseSpan;
+import io.opentracing.tag.Tags;
 
 /**
  * Decorate span at different stages of request processing. Do not finish span in decorator.
@@ -25,7 +27,7 @@ public interface ApacheClientSpanDecorator {
      * @param httpContext context
      * @param span span to decorate
      */
-    void onRequest(HttpRequestWrapper request, HttpContext httpContext, Span span);
+    void onRequest(HttpRequestWrapper request, HttpContext httpContext, BaseSpan<?> span);
 
     /**
      * Decorate span after response is received.
@@ -34,7 +36,7 @@ public interface ApacheClientSpanDecorator {
      * @param httpContext context
      * @param span span to decorate
      */
-    void onResponse(HttpResponse response, HttpContext httpContext, Span span);
+    void onResponse(HttpResponse response, HttpContext httpContext, BaseSpan<?> span);
 
     /**
      *  Decorate span span on error e.g. {@link java.net.UnknownHostException}/
@@ -44,7 +46,7 @@ public interface ApacheClientSpanDecorator {
      * @param ex exception
      * @param span span to decorate
      */
-    void onError(HttpRequest request, HttpContext httpContext, Exception ex, Span span);
+    void onError(HttpRequest request, HttpContext httpContext, Exception ex, BaseSpan<?> span);
 
     /**
      * Decorator which adds standard set of tags and logs.
@@ -53,7 +55,7 @@ public interface ApacheClientSpanDecorator {
         private static final Logger log = Logger.getLogger(StandardTags.class.getName());
 
         @Override
-        public void onRequest(HttpRequestWrapper request, HttpContext httpContext, Span span) {
+        public void onRequest(HttpRequestWrapper request, HttpContext httpContext, BaseSpan<?> span) {
             Tags.HTTP_METHOD.set(span, request.getRequestLine().getMethod());
 
             URI uri = request.getURI();
@@ -63,12 +65,12 @@ public interface ApacheClientSpanDecorator {
         }
 
         @Override
-        public void onResponse(HttpResponse response, HttpContext httpContext, Span span) {
+        public void onResponse(HttpResponse response, HttpContext httpContext, BaseSpan<?> span) {
             Tags.HTTP_STATUS.set(span, response.getStatusLine().getStatusCode());
         }
 
         @Override
-        public void onError(HttpRequest request, HttpContext httpContext, Exception ex, Span span) {
+        public void onError(HttpRequest request, HttpContext httpContext, Exception ex, BaseSpan<?> span) {
             Tags.ERROR.set(span, Boolean.TRUE);
 
             Map<String, Object> errorLogs = new HashMap<>(2);

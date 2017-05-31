@@ -1,17 +1,21 @@
 package io.opentracing.contrib.apache.http.client;
 
 
-import io.opentracing.Span;
-import io.opentracing.contrib.spanmanager.DefaultSpanManager;
-import io.opentracing.mock.MockSpan;
-import io.opentracing.mock.MockTracer;
-import io.opentracing.tag.Tags;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -23,6 +27,7 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultRedirectStrategy;
 import org.apache.http.localserver.LocalServerTestBase;
+import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpRequestHandler;
 import org.junit.After;
@@ -30,12 +35,18 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import io.opentracing.ActiveSpan;
+import io.opentracing.mock.MockSpan;
+import io.opentracing.mock.MockTracer;
+import io.opentracing.tag.Tags;
+import io.opentracing.util.ThreadLocalActiveSpanSource;
+
 /**
  * @author Pavol Loffay
  */
 public class TracingHttpClientBuilderTest extends LocalServerTestBase {
 
-    private static MockTracer mockTracer = new MockTracer(MockTracer.Propagator.TEXT_MAP);
+    private static MockTracer mockTracer = new MockTracer(new ThreadLocalActiveSpanSource(), MockTracer.Propagator.TEXT_MAP);
 
     private HttpHost serverHost;
 
@@ -177,16 +188,15 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
     }
 
     @Test
-    public void testParentSpan() throws IOException {
+    public void testActiveParentSpan() throws IOException {
         {
-            Span parentSpan = mockTracer.buildSpan("parent")
-                    .start();
-            DefaultSpanManager.getInstance().activate(parentSpan);
+            ActiveSpan parentSpan = mockTracer.buildSpan("parent")
+                    .startActive();
 
             CloseableHttpClient client = clientBuilder.build();
             client.execute(new HttpGet(serverUrl("/echo/a")));
 
-            parentSpan.finish();
+            parentSpan.deactivate();
         }
 
         List<MockSpan> mockSpans = mockTracer.finishedSpans();
@@ -194,6 +204,31 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
 
         Assert.assertEquals(mockSpans.get(0).context().traceId(), mockSpans.get(1).context().traceId());
         Assert.assertEquals(mockSpans.get(0).parentId(), mockSpans.get(1).context().spanId());
+
+        assertLocalSpan(mockSpans.get(1));
+    }
+
+    @Test
+    public void testManualParentSpan() throws IOException {
+        MockSpan parent = mockTracer.buildSpan("parent")
+                .startManual();
+
+        {
+            ActiveSpan parentSpan = mockTracer.buildSpan("parent")
+                    .startActive();
+
+            HttpContext context = new BasicHttpContext();
+            context.setAttribute(Constants.PARENT_CONTEXT, parent.context());
+
+            CloseableHttpClient client = clientBuilder.build();
+            client.execute(new HttpGet(serverUrl("/echo/a")), context);
+        }
+
+        List<MockSpan> mockSpans = mockTracer.finishedSpans();
+        Assert.assertEquals(2, mockSpans.size());
+
+        Assert.assertEquals(parent.context().traceId(), mockSpans.get(1).context().traceId());
+        Assert.assertEquals(parent.context().spanId(), mockSpans.get(1).parentId());
 
         assertLocalSpan(mockSpans.get(1));
     }
@@ -240,6 +275,73 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
         Assert.assertNotNull(mockSpan.logEntries().get(0).fields().get("error.object"));
     }
 
+    @Test
+    public void testMultipleSimultaneousRequests() throws ExecutionException, InterruptedException {
+        int numberOfCalls = 100;
+
+        Map<Long, MockSpan> parentSpans = new LinkedHashMap<>(numberOfCalls);
+
+        ExecutorService executorService = Executors.newFixedThreadPool(20);
+        List<Future<?>> futures = new ArrayList<>(numberOfCalls);
+        for (int i = 0; i < numberOfCalls; i++) {
+
+            final String requestUrl = serverUrl("/echo/a");
+
+            final MockSpan parentSpan = mockTracer.buildSpan("foo")
+                    .ignoreActiveSpan().start();
+            parentSpan.setTag("request-url", requestUrl);
+            parentSpans.put(parentSpan.context().spanId(), parentSpan);
+
+            futures.add(executorService.submit(new Runnable() {
+                @Override
+                public void run() {
+                    ActiveSpan activeParent = mockTracer.makeActive(parentSpan);
+                    try {
+                        httpclient.execute(new HttpGet(requestUrl));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        Assert.fail();
+                    }
+                }
+            }));
+        }
+
+        // wait to finish all calls
+        for (Future<?> future: futures) {
+            future.get();
+        }
+
+        executorService.awaitTermination(1, TimeUnit.SECONDS);
+        executorService.shutdown();
+
+        List<MockSpan> mockSpans = mockTracer.finishedSpans();
+        assertOnErrors(mockSpans);
+        Assert.assertEquals(numberOfCalls * 2, mockSpans.size()); //local + network span
+
+        // parentId - span
+        Map<Long, MockSpan> map = new HashMap<>(mockSpans.size());
+        for (MockSpan mockSpan: mockSpans) {
+            map.put(mockSpan.context().spanId(), mockSpan);
+        }
+
+        for (MockSpan networkSpan: mockSpans) {
+            if (networkSpan.tags().containsKey(Tags.COMPONENT.getKey())) {
+                continue;
+            }
+
+            MockSpan localSpan = map.get(networkSpan.parentId());
+            MockSpan parentBeforeClientSpan = parentSpans.get(localSpan.parentId());
+
+            Assert.assertEquals(parentBeforeClientSpan.tags().get("request-url"), networkSpan.tags().get(Tags.HTTP_URL.getKey()));
+
+            Assert.assertEquals(parentBeforeClientSpan.context().traceId(), localSpan.context().traceId());
+            Assert.assertEquals(parentBeforeClientSpan.context().traceId(), networkSpan.context().traceId());
+            Assert.assertEquals(parentBeforeClientSpan.context().spanId(), localSpan.parentId());
+            Assert.assertEquals(0, networkSpan.generatedErrors().size());
+            Assert.assertEquals(0, parentBeforeClientSpan.generatedErrors().size());
+        }
+    }
+
     public void assertLocalSpan(MockSpan mockSpan) {
         Assert.assertEquals(1, mockSpan.tags().size());
         Assert.assertEquals(TracingClientExec.COMPONENT_NAME, mockSpan.tags().get(Tags.COMPONENT.getKey()));
@@ -247,6 +349,12 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
 
     protected String serverUrl(String path) {
         return serverHost.toString() + path;
+    }
+
+    public static void assertOnErrors(List<MockSpan> spans) {
+        for (MockSpan mockSpan: spans) {
+            Assert.assertEquals(mockSpan.generatedErrors().toString(), 0, mockSpan.generatedErrors().size());
+        }
     }
 
     public static class RedirectHandler implements HttpRequestHandler {
