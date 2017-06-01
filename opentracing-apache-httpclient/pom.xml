@@ -24,11 +24,6 @@
       <artifactId>httpclient</artifactId>
       <version>${version.org.apache.httpcomponents-httpclient}</version>
     </dependency>
-    <dependency>
-      <groupId>io.opentracing.contrib</groupId>
-      <artifactId>opentracing-spanmanager</artifactId>
-      <version>${version.io.opentracing.contrib-opentracing-spanmanager}</version>
-    </dependency>
 
     <dependency>
       <groupId>junit</groupId>
