@@ -1,6 +1,8 @@
 package io.opentracing.contrib.apache.http.client;
 
 
+import io.opentracing.Scope;
+import io.opentracing.util.ThreadLocalScopeManager;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
@@ -35,18 +37,16 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import io.opentracing.ActiveSpan;
 import io.opentracing.mock.MockSpan;
 import io.opentracing.mock.MockTracer;
 import io.opentracing.tag.Tags;
-import io.opentracing.util.ThreadLocalActiveSpanSource;
 
 /**
  * @author Pavol Loffay
  */
 public class TracingHttpClientBuilderTest extends LocalServerTestBase {
 
-    private static MockTracer mockTracer = new MockTracer(new ThreadLocalActiveSpanSource(), MockTracer.Propagator.TEXT_MAP);
+    private static MockTracer mockTracer = new MockTracer(new ThreadLocalScopeManager(), MockTracer.Propagator.TEXT_MAP);
 
     private HttpHost serverHost;
 
@@ -190,13 +190,13 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
     @Test
     public void testActiveParentSpan() throws IOException {
         {
-            ActiveSpan parentSpan = mockTracer.buildSpan("parent")
-                    .startActive();
+            Scope parentSpan = mockTracer.buildSpan("parent")
+                    .startActive(true);
 
             CloseableHttpClient client = clientBuilder.build();
             client.execute(new HttpGet(serverUrl("/echo/a")));
 
-            parentSpan.deactivate();
+            parentSpan.close();
         }
 
         List<MockSpan> mockSpans = mockTracer.finishedSpans();
@@ -214,8 +214,8 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
                 .startManual();
 
         {
-            ActiveSpan parentSpan = mockTracer.buildSpan("parent")
-                    .startActive();
+            Scope parentSpan = mockTracer.buildSpan("parent")
+                    .startActive(false);
 
             HttpContext context = new BasicHttpContext();
             context.setAttribute(Constants.PARENT_CONTEXT, parent.context());
@@ -295,7 +295,7 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
             futures.add(executorService.submit(new Runnable() {
                 @Override
                 public void run() {
-                    ActiveSpan activeParent = mockTracer.makeActive(parentSpan);
+                    Scope activeParent = mockTracer.scopeManager().activate(parentSpan);
                     try {
                         httpclient.execute(new HttpGet(requestUrl));
                     } catch (IOException e) {
