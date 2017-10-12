@@ -121,7 +121,7 @@ public class TracingClientExec implements ClientExecChain {
   }
 
   protected CloseableHttpResponse handleNetworkProcessing(
-      Span parentScope,
+      Span parentSpan,
       HttpRoute route,
       HttpRequestWrapper request,
       HttpClientContext clientContext,
@@ -129,7 +129,7 @@ public class TracingClientExec implements ClientExecChain {
 
     Scope redirectScope = tracer.buildSpan(request.getMethod())
         .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
-        .asChildOf(parentScope)
+        .asChildOf(parentSpan)
         .startActive(true);
     tracer.inject(redirectScope.span().context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
 
