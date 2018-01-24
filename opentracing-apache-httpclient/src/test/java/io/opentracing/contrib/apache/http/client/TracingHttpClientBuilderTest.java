@@ -295,7 +295,7 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
             futures.add(executorService.submit(new Runnable() {
                 @Override
                 public void run() {
-                    Scope activeParent = mockTracer.scopeManager().activate(parentSpan);
+                    Scope activeParent = mockTracer.scopeManager().activate(parentSpan, true);
                     try {
                         httpclient.execute(new HttpGet(requestUrl));
                     } catch (IOException e) {

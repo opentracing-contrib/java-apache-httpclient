@@ -37,7 +37,7 @@ public class TracingClientExec implements ClientExecChain {
    * Id of {@link HttpClientContext#setAttribute(String, Object)} representing span associated with
    * the current client processing. Referenced span is local span not a span representing HTTP communication.
    */
-  protected static final String SPAN_PROP = TracingHttpClientBuilder.class.getName() + ".activeSpan";
+  protected static final String SPAN_PROP = TracingHttpClientBuilder.class.getName() + ".currentSpan";
   /**
    * Tracing {@link ClientExecChain} is executed after redirect exec, so on redirects it is called
    * multiple times. This is used as an id for {@link HttpClientContext#setAttribute(String, Object)}
@@ -114,7 +114,7 @@ public class TracingClientExec implements ClientExecChain {
               .asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
     }
 
-    Span localSpan = spanBuilder.startManual();
+    Span localSpan = spanBuilder.start();
     clientContext.setAttribute(SPAN_PROP, localSpan);
     clientContext.setAttribute(REDIRECT_COUNT, 0);
     return localSpan;
