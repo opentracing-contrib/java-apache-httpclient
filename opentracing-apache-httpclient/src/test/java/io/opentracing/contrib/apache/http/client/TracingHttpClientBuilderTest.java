@@ -1,8 +1,6 @@
 package io.opentracing.contrib.apache.http.client;
 
 
-import io.opentracing.Scope;
-import io.opentracing.util.ThreadLocalScopeManager;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
@@ -37,9 +35,12 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import io.opentracing.Scope;
+import io.opentracing.Span;
 import io.opentracing.mock.MockSpan;
 import io.opentracing.mock.MockTracer;
 import io.opentracing.tag.Tags;
+import io.opentracing.util.ThreadLocalScopeManager;
 
 /**
  * @author Pavol Loffay
@@ -214,9 +215,9 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
                 .startManual();
 
         {
-            Scope parentSpan = mockTracer.buildSpan("parent")
-                    .startActive(false);
-
+            Span parentSpan = mockTracer.buildSpan("parent")
+                    .start();
+            mockTracer.activateSpan(parentSpan);
             HttpContext context = new BasicHttpContext();
             context.setAttribute(Constants.PARENT_CONTEXT, parent.context());
 
@@ -295,7 +296,7 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
             futures.add(executorService.submit(new Runnable() {
                 @Override
                 public void run() {
-                    Scope activeParent = mockTracer.scopeManager().activate(parentSpan, true);
+                    mockTracer.activateSpan(parentSpan);
                     try {
                         httpclient.execute(new HttpGet(requestUrl));
                     } catch (IOException e) {
