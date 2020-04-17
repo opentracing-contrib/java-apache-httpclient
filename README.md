@@ -7,7 +7,7 @@ Apache HttpClient instrumentation.
 ## Configuration
 
 ```java
-GlogalTracer.register(tracer);
+GlobalTracer.register(tracer);
 HttpClient httpClient = new TracingHttpClientBuilder()
     .build();
 
