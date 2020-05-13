@@ -60,7 +60,6 @@ public interface ApacheClientSpanDecorator {
             HttpHost target = request.getTarget();
 
             Tags.HTTP_METHOD.set(span, request.getRequestLine().getMethod());
-            Tags.HTTP_URL.set(span, request.getRequestLine().getUri());
 
             if (uri != null) {
                 Tags.HTTP_URL.set(span, request.getRequestLine().getUri());
