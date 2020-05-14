@@ -1,17 +1,17 @@
 package io.opentracing.contrib.apache.http.client;
 
 import io.opentracing.Span;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.logging.Logger;
-
+import io.opentracing.tag.Tags;
+import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpRequestWrapper;
 import org.apache.http.protocol.HttpContext;
 
-import io.opentracing.tag.Tags;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Logger;
 
 /**
  * Decorate span at different stages of request processing. Do not finish span in decorator.
@@ -56,12 +56,20 @@ public interface ApacheClientSpanDecorator {
 
         @Override
         public void onRequest(HttpRequestWrapper request, HttpContext httpContext, Span span) {
+            URI uri = request.getURI();
+            HttpHost target = request.getTarget();
+
             Tags.HTTP_METHOD.set(span, request.getRequestLine().getMethod());
 
-            URI uri = request.getURI();
-            Tags.HTTP_URL.set(span, request.getRequestLine().getUri());
-            Tags.PEER_PORT.set(span, uri.getPort() == -1 ? 80 : uri.getPort());
-            Tags.PEER_HOSTNAME.set(span, uri.getHost());
+            if (uri != null) {
+                Tags.HTTP_URL.set(span, uri.toString());
+                Tags.PEER_HOSTNAME.set(span, uri.getHost());
+                Tags.PEER_PORT.set(span, uri.getPort() == -1 ? uri.getScheme().equalsIgnoreCase("https") ? 443 : 80 : uri.getPort());
+            } else if (target != null) {
+                Tags.HTTP_URL.set(span, request.getTarget() + request.getRequestLine().getUri());
+                Tags.PEER_HOSTNAME.set(span, target.getHostName());
+                Tags.PEER_PORT.set(span, target.getPort() == -1 ? target.getSchemeName().equalsIgnoreCase("https") ? 443 : 80 : target.getPort());
+            }
         }
 
         @Override

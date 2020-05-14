@@ -16,17 +16,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.http.HttpException;
-import org.apache.http.HttpHost;
-import org.apache.http.HttpRequest;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
+import org.apache.http.*;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultRedirectStrategy;
 import org.apache.http.localserver.LocalServerTestBase;
+import org.apache.http.message.BasicHttpRequest;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpRequestHandler;
@@ -78,6 +75,31 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
         {
             CloseableHttpClient client = clientBuilder.build();
             client.execute(new HttpGet(serverUrl("/echo/a")));
+        }
+
+        List<MockSpan> mockSpans = mockTracer.finishedSpans();
+        Assert.assertEquals(2, mockSpans.size());
+
+        MockSpan mockSpan = mockSpans.get(0);
+        Assert.assertEquals("GET", mockSpan.operationName());
+
+        Assert.assertEquals(6, mockSpan.tags().size());
+        Assert.assertEquals(Tags.SPAN_KIND_CLIENT, mockSpan.tags().get(Tags.SPAN_KIND.getKey()));
+        Assert.assertEquals("GET", mockSpan.tags().get(Tags.HTTP_METHOD.getKey()));
+        Assert.assertEquals(serverUrl("/echo/a"), mockSpan.tags().get(Tags.HTTP_URL.getKey()));
+        Assert.assertEquals(200, mockSpan.tags().get(Tags.HTTP_STATUS.getKey()));
+        Assert.assertEquals(serverHost.getPort(), mockSpan.tags().get(Tags.PEER_PORT.getKey()));
+        Assert.assertEquals(serverHost.getHostName(), mockSpan.tags().get(Tags.PEER_HOSTNAME.getKey()));
+        Assert.assertEquals(0, mockSpan.logEntries().size());
+
+        assertLocalSpan(mockSpans.get(1));
+    }
+
+    @Test
+    public void testBasicHttpRequest() throws IOException {
+        {
+            CloseableHttpClient client = clientBuilder.build();
+            client.execute(serverHost, new BasicHttpRequest("GET", "/echo/a", HttpVersion.HTTP_1_1));
         }
 
         List<MockSpan> mockSpans = mockTracer.finishedSpans();
