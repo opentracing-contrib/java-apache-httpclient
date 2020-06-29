@@ -48,6 +48,7 @@ public class TracingClientExec implements ClientExecChain {
   private final RedirectStrategy redirectStrategy;
   private final ClientExecChain requestExecutor;
   private final boolean redirectHandlingDisabled;
+  private final boolean injectDisabled;
 
   private final Tracer tracer;
   private final List<ApacheClientSpanDecorator> spanDecorators;
@@ -56,11 +57,13 @@ public class TracingClientExec implements ClientExecChain {
       ClientExecChain clientExecChain,
       RedirectStrategy redirectStrategy,
       boolean redirectHandlingDisabled,
+      boolean injectDisabled,
       Tracer tracer,
       List<ApacheClientSpanDecorator> spanDecorators) {
     this.requestExecutor = clientExecChain;
     this.redirectStrategy = redirectStrategy;
     this.redirectHandlingDisabled = redirectHandlingDisabled;
+    this.injectDisabled = injectDisabled;
     this.tracer = tracer;
     this.spanDecorators = new ArrayList<>(spanDecorators);
   }
@@ -131,7 +134,9 @@ public class TracingClientExec implements ClientExecChain {
         .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
         .asChildOf(parentSpan)
         .start();
-    tracer.inject(redirectSpan.context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
+    if(!injectDisabled) {
+      tracer.inject(redirectSpan.context(), Format.Builtin.HTTP_HEADERS, new HttpHeadersInjectAdapter(request));
+    }
 
     try (Scope redirectScope = tracer.activateSpan(redirectSpan)){
       for (ApacheClientSpanDecorator decorator : spanDecorators) {
