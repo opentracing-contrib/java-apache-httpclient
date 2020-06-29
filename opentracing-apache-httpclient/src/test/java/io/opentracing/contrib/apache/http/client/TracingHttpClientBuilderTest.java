@@ -213,13 +213,13 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
     @Test
     public void testActiveParentSpan() throws IOException {
         {
-            Scope parentSpan = mockTracer.buildSpan("parent")
-                    .startActive(true);
-
-            CloseableHttpClient client = clientBuilder.build();
-            client.execute(new HttpGet(serverUrl("/echo/a")));
-
-            parentSpan.close();
+            final MockSpan parent = mockTracer.buildSpan("parent").start();
+            try (Scope ignored = mockTracer.activateSpan(parent)) {
+                CloseableHttpClient client = clientBuilder.build();
+                client.execute(new HttpGet(serverUrl("/echo/a")));
+            } finally {
+                parent.finish();
+            }
         }
 
         List<MockSpan> mockSpans = mockTracer.finishedSpans();
@@ -234,7 +234,7 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
     @Test
     public void testManualParentSpan() throws IOException {
         MockSpan parent = mockTracer.buildSpan("parent")
-                .startManual();
+                .start();
 
         {
             Span parentSpan = mockTracer.buildSpan("parent")

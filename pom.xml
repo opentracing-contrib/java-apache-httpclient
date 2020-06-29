@@ -39,7 +39,7 @@
     <maven.compiler.target>1.7</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-    <version.io.opentracing>0.32.0</version.io.opentracing>
+    <version.io.opentracing>0.33.0</version.io.opentracing>
     <version.org.apache.httpcomponents-httpclient>4.5.3</version.org.apache.httpcomponents-httpclient>
     <version.junit>4.12</version.junit>
 
