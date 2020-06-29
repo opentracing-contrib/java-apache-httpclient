@@ -277,6 +277,24 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
     }
 
     @Test
+    public void testDisablePropagation() throws IOException {
+        {
+            HttpClient client = ((TracingHttpClientBuilder)clientBuilder).disableInjection().build();
+            client.execute(new HttpGet(serverUrl(RedirectHandler.MAPPING)));
+        }
+
+        List<MockSpan> mockSpans = mockTracer.finishedSpans();
+        Assert.assertEquals(3, mockSpans.size());
+
+        // the last one is for redirect
+        MockSpan mockSpan = mockSpans.get(1);
+        Assert.assertEquals(PropagationHandler.lastRequest.getFirstHeader("traceId"), null);
+        Assert.assertEquals(PropagationHandler.lastRequest.getFirstHeader("spanId"), null);
+
+        assertLocalSpan(mockSpans.get(2));
+    }
+
+    @Test
     public void testUnknownHostException() throws IOException {
         CloseableHttpClient client = clientBuilder.build();
 

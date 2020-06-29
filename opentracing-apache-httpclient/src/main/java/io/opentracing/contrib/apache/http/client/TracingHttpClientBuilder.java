@@ -18,9 +18,9 @@ public class TracingHttpClientBuilder extends HttpClientBuilder {
 
     private final RedirectStrategy redirectStrategy;
     private final boolean redirectHandlingDisabled;
-
     private Tracer tracer;
     private List<ApacheClientSpanDecorator> spanDecorators;
+    private boolean injectDisabled;
 
     /**
      * When using this constructor tracer should be registered via
@@ -86,9 +86,14 @@ public class TracingHttpClientBuilder extends HttpClientBuilder {
         return this;
     }
 
+    public TracingHttpClientBuilder disableInjection() {
+        this.injectDisabled = true;
+        return this;
+    }
+
     @Override
     protected ClientExecChain decorateProtocolExec(final ClientExecChain requestExecutor) {
         return new TracingClientExec(requestExecutor, redirectStrategy,
-                redirectHandlingDisabled, tracer, spanDecorators);
+                redirectHandlingDisabled, injectDisabled, tracer, spanDecorators);
     }
 }
