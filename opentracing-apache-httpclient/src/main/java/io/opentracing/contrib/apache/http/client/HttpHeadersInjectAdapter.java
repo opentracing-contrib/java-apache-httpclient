@@ -20,7 +20,7 @@ public class HttpHeadersInjectAdapter implements TextMap {
 
     @Override
     public void put(String key, String value) {
-        httpRequest.addHeader(key, value);
+        httpRequest.setHeader(key, value);
     }
 
     @Override
