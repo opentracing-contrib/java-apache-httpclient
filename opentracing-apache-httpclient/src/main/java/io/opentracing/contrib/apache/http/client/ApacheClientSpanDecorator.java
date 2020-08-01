@@ -64,7 +64,14 @@ public interface ApacheClientSpanDecorator {
             if (uri != null) {
                 Tags.HTTP_URL.set(span, uri.toString());
                 Tags.PEER_HOSTNAME.set(span, uri.getHost());
-                Tags.PEER_PORT.set(span, uri.getPort() == -1 ? uri.getScheme().equalsIgnoreCase("https") ? 443 : 80 : uri.getPort());
+                int port = uri.getPort();
+                if (port == -1) {
+                    String scheme = uri.getScheme();
+                    if (scheme != null) {
+                        port = scheme.equalsIgnoreCase("https") ? 443 : 80;
+                    }
+                }
+                Tags.PEER_PORT.set(span, port);
             } else if (target != null) {
                 Tags.HTTP_URL.set(span, request.getTarget() + request.getRequestLine().getUri());
                 Tags.PEER_HOSTNAME.set(span, target.getHostName());
