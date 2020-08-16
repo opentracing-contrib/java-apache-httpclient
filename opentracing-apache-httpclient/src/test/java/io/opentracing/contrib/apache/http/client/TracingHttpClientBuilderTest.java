@@ -26,6 +26,7 @@ import org.apache.http.localserver.LocalServerTestBase;
 import org.apache.http.message.BasicHttpRequest;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
+import org.apache.http.protocol.HttpRequestExecutor;
 import org.apache.http.protocol.HttpRequestHandler;
 import org.junit.After;
 import org.junit.Assert;
@@ -381,6 +382,51 @@ public class TracingHttpClientBuilderTest extends LocalServerTestBase {
             Assert.assertEquals(0, networkSpan.generatedErrors().size());
             Assert.assertEquals(0, parentBeforeClientSpan.generatedErrors().size());
         }
+    }
+
+    @Test
+    public void testDefaultRetryStrategy() throws IOException {
+        {
+            CloseableHttpClient client = clientBuilder.setRequestExecutor(new HttpRequestExecutor() {
+                private boolean passThrough = false;
+                @Override
+                public HttpResponse execute(HttpRequest request, HttpClientConnection conn, HttpContext context) throws IOException, HttpException {
+                    if (!passThrough) {
+                        passThrough = true;
+                        throw new IOException("close span and retry");
+                    }
+                    return super.execute(request, conn, context);
+                }
+            }).build();
+            client.execute(serverHost, new BasicHttpRequest("GET", "/echo/a", HttpVersion.HTTP_1_1));
+        }
+
+        List<MockSpan> mockSpans = mockTracer.finishedSpans();
+        Assert.assertEquals(4, mockSpans.size());
+
+        MockSpan failedRequestSpan = mockSpans.get(0);
+        MockSpan succeededRequestSpan = mockSpans.get(2);
+        for (MockSpan span : new MockSpan[] {failedRequestSpan, succeededRequestSpan}) {
+            Assert.assertEquals("GET", succeededRequestSpan.operationName());
+            Assert.assertEquals(6, span.tags().size());
+            Assert.assertEquals(Tags.SPAN_KIND_CLIENT, span.tags().get(Tags.SPAN_KIND.getKey()));
+            Assert.assertEquals("GET", span.tags().get(Tags.HTTP_METHOD.getKey()));
+            Assert.assertEquals(serverUrl("/echo/a"), span.tags().get(Tags.HTTP_URL.getKey()));
+            Assert.assertEquals(serverHost.getPort(), span.tags().get(Tags.PEER_PORT.getKey()));
+            Assert.assertEquals(serverHost.getHostName(), span.tags().get(Tags.PEER_HOSTNAME.getKey()));
+        }
+
+        Assert.assertEquals(null, failedRequestSpan.tags().get(Tags.HTTP_STATUS.getKey()));
+        Assert.assertEquals(1, failedRequestSpan.logEntries().size());
+        Assert.assertEquals(2, failedRequestSpan.logEntries().get(0).fields().size());
+        Assert.assertEquals(Tags.ERROR.getKey(), failedRequestSpan.logEntries().get(0).fields().get("event"));
+        Assert.assertNotNull(failedRequestSpan.logEntries().get(0).fields().get("error.object"));
+
+        Assert.assertEquals(200, succeededRequestSpan.tags().get(Tags.HTTP_STATUS.getKey()));
+        Assert.assertEquals(0, succeededRequestSpan.logEntries().size());
+
+        assertLocalSpan(mockSpans.get(1));
+        assertLocalSpan(mockSpans.get(3));
     }
 
     public void assertLocalSpan(MockSpan mockSpan) {

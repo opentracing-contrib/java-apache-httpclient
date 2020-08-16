@@ -61,7 +61,7 @@ public interface ApacheClientSpanDecorator {
 
             Tags.HTTP_METHOD.set(span, request.getRequestLine().getMethod());
 
-            if (uri != null) {
+            if (uri != null && uri.isAbsolute()) {
                 Tags.HTTP_URL.set(span, uri.toString());
                 Tags.PEER_HOSTNAME.set(span, uri.getHost());
                 int port = uri.getPort();
