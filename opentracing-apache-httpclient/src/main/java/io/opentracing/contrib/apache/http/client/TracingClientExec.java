@@ -2,6 +2,7 @@ package io.opentracing.contrib.apache.http.client;
 
 import static io.opentracing.contrib.apache.http.client.Constants.PARENT_CONTEXT;
 
+import io.opentracing.References;
 import io.opentracing.Scope;
 import io.opentracing.Span;
 import java.io.IOException;
@@ -75,13 +76,9 @@ public class TracingClientExec implements ClientExecChain {
       HttpClientContext clientContext,
       HttpExecutionAware execAware) throws IOException, HttpException {
 
-    Span localSpan = clientContext.getAttribute(SPAN_PROP, Span.class);
+    Span localSpan = handleLocalSpan(request, clientContext);
     CloseableHttpResponse response = null;
     try {
-      if (localSpan == null) {
-        localSpan = handleLocalSpan(request, clientContext);
-      }
-
       return (response = handleNetworkProcessing(localSpan, route, request, clientContext, execAware));
     } catch (Exception e) {
       localSpan.finish();
@@ -116,6 +113,12 @@ public class TracingClientExec implements ClientExecChain {
       spanBuilder.ignoreActiveSpan()
               .asChildOf(clientContext.getAttribute(PARENT_CONTEXT, SpanContext.class));
     }
+
+    Span previousLocalSpan = clientContext.getAttribute(SPAN_PROP, Span.class);
+    spanBuilder.addReference(
+            References.FOLLOWS_FROM,
+            previousLocalSpan == null ? null : previousLocalSpan.context()
+    );
 
     Span localSpan = spanBuilder.start();
     clientContext.setAttribute(SPAN_PROP, localSpan);
